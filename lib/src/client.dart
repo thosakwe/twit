@@ -16,6 +16,7 @@ import 'data/data.dart';
 import 'credentials.dart';
 import 'stream.dart';
 part 'apis_impl/account.dart';
+part 'apis_impl/streams.dart';
 
 const String UPLOAD_ENDPOINT =
     'https://upload.twitter.com/1.1/media/upload.json';
@@ -41,8 +42,8 @@ class Twit {
     _account = new _TwitterAccountsApiImpl(this);
   }
 
-  Uri _makeUrl(String path) =>
-      Uri.parse('https://api.twitter/com' + path.replaceAll(_straySlashes, ''));
+  Uri _makeUrl(String path) => Uri.parse(
+      'https://api.twitter.com/1.1/' + path.replaceAll(_straySlashes, ''));
 
   String _createSignature(
       String method, String uriString, Map<String, dynamic> params,
@@ -96,27 +97,45 @@ class Twit {
         request.method,
         request.url.toString().replaceAll("?${request.url.query}", ""),
         {}..addAll(headers)..addAll(params ?? {}),
-        tokenSecret: credentials.accessSecret);
+        tokenSecret: credentials.accessTokenSecret);
 
     var oauthString = headers.keys
         .map((name) => '$name="${Uri.encodeComponent(headers[name])}"')
         .join(", ");
 
-    headers['authorization'] = 'OAuth $oauthString';
+    request.headers['authorization'] = 'OAuth $oauthString';
 
     return _innerClient.send(request);
   }
 
-  Future<http.Response> get(String path, [Map<String, dynamic> params]) =>
-      send(new http.Request('GET', _makeUrl(path)))
-          .then(http.Response.fromStream);
+  Map<String, dynamic> _processResponse(http.Response response) {
+    if (response.headers['content-type']?.contains('application/json') ==
+        true) {
+      if (response.statusCode != 200 && response.statusCode != 201)
+        throw new TwitterException.fromResponse(response);
+      else
+        return JSON.decode(response.body);
+    } else
+      throw new StateError(
+          'Twitter response returned body with status code ${response.statusCode} and content type "${response.headers["content-type"]}":\n${response.body}');
+  }
 
-  Future<http.Response> post(String path, [Map<String, dynamic> params]) =>
+  Future<Map<String, dynamic>> get(String path,
+          [Map<String, dynamic> params]) =>
+      send(new http.Request('GET', _makeUrl(path)))
+          .then(http.Response.fromStream)
+          .then(_processResponse);
+
+  Future<Map<String, dynamic>> post(String path,
+          [Map<String, dynamic> params]) =>
       send(new http.Request('POST', _makeUrl(path)))
-          .then(http.Response.fromStream);
+          .then(http.Response.fromStream)
+          .then(_processResponse);
 
   Future<TwitterStreams> stream(String path,
-      [Map<String, dynamic> params]) async {}
+      [Map<String, dynamic> params]) async {
+    var request = new http.Request('POST', _makeUrl(path));
+  }
 
   /// Uploads data from a stream using the chunked media upload API.
   Future<TwitterMediaUploadInfo> upload(

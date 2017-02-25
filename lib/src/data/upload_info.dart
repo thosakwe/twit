@@ -1,6 +1,7 @@
 import 'exception.dart';
+import 'twitter_data.dart';
 
-class TwitterMediaUploadInfo {
+class TwitterMediaUploadInfo implements TwitterData {
   int mediaId, size, expiresAfterSecs;
   TwitterMediaUploadInfoImage image;
   TwitterMediaUploadInfoProcessingInfo processingInfo;
@@ -49,7 +50,7 @@ class TwitterMediaUploadInfo {
   }
 }
 
-class TwitterMediaUploadInfoImage {
+class TwitterMediaUploadInfoImage implements TwitterData {
   int w, h;
   String imageType;
 
@@ -64,7 +65,7 @@ class TwitterMediaUploadInfoImage {
   }
 }
 
-class TwitterMediaUploadInfoVideo {
+class TwitterMediaUploadInfoVideo implements TwitterData {
   String videoType;
 
   TwitterMediaUploadInfoVideo({this.videoType});
@@ -77,7 +78,7 @@ class TwitterMediaUploadInfoVideo {
   }
 }
 
-class TwitterMediaUploadInfoProcessingInfo {
+class TwitterMediaUploadInfoProcessingInfo implements TwitterData {
   TwitterMediaUploadInfoProcessingInfoState state;
   int checkAfterSecs, progressPercent;
   TwitterException error;

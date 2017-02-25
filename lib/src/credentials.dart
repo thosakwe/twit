@@ -1,17 +1,17 @@
 class TwitterCredentials {
-  String consumerKey, consumerSecret, accessToken, accessSecret;
+  String consumerKey, consumerSecret, accessToken, accessTokenSecret;
 
   TwitterCredentials(
       {this.consumerKey,
       this.consumerSecret,
       this.accessToken,
-      this.accessSecret});
+      this.accessTokenSecret});
 
   factory TwitterCredentials.fromJson(Map json) => new TwitterCredentials(
         consumerKey: json['consumer_key'],
         consumerSecret: json['consumer_secret'],
         accessToken: json['access_token'],
-        accessSecret: json['access_secret'],
+        accessTokenSecret: json['access_secret'],
       );
 
   Map toJson() {
@@ -19,7 +19,7 @@ class TwitterCredentials {
       'consumer_key': consumerKey,
       'consumer_secret': consumerSecret,
       'access_token': accessToken,
-      'access_secret': accessSecret
+      'access_secret': accessTokenSecret
     };
   }
 }
