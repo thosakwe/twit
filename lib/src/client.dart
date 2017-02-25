@@ -120,17 +120,20 @@ class Twit {
           'Twitter response returned body with status code ${response.statusCode} and content type "${response.headers["content-type"]}":\n${response.body}');
   }
 
-  Future<Map<String, dynamic>> get(String path,
-          [Map<String, dynamic> params]) =>
+  Future<Map<String, dynamic>> get(String path, [Map<String, String> params]) =>
       send(new http.Request('GET', _makeUrl(path)))
           .then(http.Response.fromStream)
           .then(_processResponse);
 
-  Future<Map<String, dynamic>> post(String path,
-          [Map<String, dynamic> params]) =>
-      send(new http.Request('POST', _makeUrl(path)))
-          .then(http.Response.fromStream)
-          .then(_processResponse);
+  Future<Map<String, dynamic>> post(String path, [Map<String, String> params]) {
+    var request = new http.Request('POST', _makeUrl(path));
+
+    if (params?.isNotEmpty == true) request.bodyFields = params;
+
+    return send(request, params)
+        .then(http.Response.fromStream)
+        .then(_processResponse);
+  }
 
   Future<TwitterStreams> stream(String path,
       [Map<String, dynamic> params]) async {
