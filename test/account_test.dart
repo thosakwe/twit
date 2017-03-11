@@ -1,13 +1,12 @@
-import 'package:http/http.dart' as http;
 import 'package:test/test.dart';
-import 'package:twit/twit.dart';
+import 'package:twit/io.dart';
 import 'common.dart';
 
 main() {
   Twit twit;
 
   setUp(() async {
-    twit = new Twit(await loadCredentialsFromEnvironment(), new http.Client());
+    twit = new Twit(await loadCredentialsFromEnvironment());
   });
 
   tearDown(() => twit.close());

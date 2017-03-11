@@ -1,7 +1,7 @@
 part of twit.client;
 
 class _TwitterAccountsApiImpl implements TwitterAccountApi {
-  final Twit _twit;
+  final TwitBase _twit;
 
   _TwitterAccountsApiImpl(this._twit);
 

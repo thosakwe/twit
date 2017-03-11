@@ -7,6 +7,8 @@ import 'package:charcode/ascii.dart';
 import 'package:crypto/crypto.dart';
 import 'package:http/src/base_client.dart' as http;
 import 'package:http/src/request.dart' as http;
+import 'package:http/src/multipart_file.dart' as http;
+import 'package:http/src/multipart_request.dart' as http;
 import 'package:http/src/response.dart' as http;
 import 'package:http/src/streamed_response.dart';
 import 'package:http/src/base_request.dart';
@@ -14,23 +16,15 @@ import 'package:random_string/random_string.dart' as rs;
 import 'apis/apis.dart';
 import 'data/data.dart';
 import 'credentials.dart';
-import 'stream.dart';
 part 'apis_impl/account.dart';
-part 'apis_impl/streams.dart';
 
 const String UPLOAD_ENDPOINT =
     'https://upload.twitter.com/1.1/media/upload.json';
 
+final RegExp _http = new RegExp(r'^https?://');
 final RegExp _straySlashes = new RegExp(r'(^/+)|(/+$)');
 
-void _writeln(StringBuffer buf, [String message = '']) {
-  buf
-    ..write(message)
-    ..writeCharCode($cr)
-    ..writeCharCode($lf);
-}
-
-class Twit {
+abstract class TwitBase {
   final TwitterCredentials credentials;
   final http.BaseClient _innerClient;
 
@@ -38,12 +32,15 @@ class Twit {
 
   TwitterAccountApi get account => _account;
 
-  Twit(this.credentials, this._innerClient) {
+  TwitBase(this.credentials, this._innerClient) {
     _account = new _TwitterAccountsApiImpl(this);
   }
 
-  Uri _makeUrl(String path) => Uri.parse(
-      'https://api.twitter.com/1.1/' + path.replaceAll(_straySlashes, ''));
+  Uri _makeUrl(String path) {
+    if (path.startsWith(_http)) return Uri.parse(path);
+    return Uri.parse(
+        'https://api.twitter.com/1.1/' + path.replaceAll(_straySlashes, ''));
+  }
 
   String _createSignature(
       String method, String uriString, Map<String, dynamic> params,
@@ -135,9 +132,25 @@ class Twit {
         .then(_processResponse);
   }
 
-  Future<TwitterStreams> stream(String path,
-      [Map<String, dynamic> params]) async {
-    var request = new http.Request('POST', _makeUrl(path));
+  Stream stream(String path, [Map<String, dynamic> params]) {
+    var ctrl = new StreamController();
+    var rq = new http.Request('POST', _makeUrl(path));
+
+    send(rq, params).then((rs) async {
+      if (rs.headers['content-type']?.contains('application/json') == true) {
+        if (rs.statusCode != 200 && rs.statusCode != 201)
+          throw new TwitterException.fromResponse(
+              await http.Response.fromStream(rs));
+      } else {
+        var body = await rs.stream.transform(UTF8.decoder).join();
+        throw new StateError(
+            'Twitter response returned body with status code ${rs.statusCode} and content type "${rs.headers["content-type"]}":\n$body');
+      }
+
+      rs.stream.transform(new _CrlfSplitter()).pipe(ctrl);
+    });
+
+    return ctrl.stream;
   }
 
   /// Uploads data from a stream using the chunked media upload API.
@@ -174,30 +187,17 @@ class Twit {
     int i = 0;
 
     await for (var chunk in stream) {
-      var boundary = rs.randomAlphaNumeric(rs.randomBetween(15, 32));
-      var mediaData = BASE64.encode(chunk); // TODO: Media chunk
-
       var appendParams = {
         'command': 'APPEND',
         'media_id': mediaId,
-        'media_data': mediaData,
         'segment_index': (++i).toString()
       };
+      var appendRequest =
+          new http.MultipartRequest('POST', Uri.parse(UPLOAD_ENDPOINT));
+      appendRequest
+        ..fields.addAll(appendParams)
+        ..files.add(new http.MultipartFile.fromBytes('media', chunk));
 
-      var buf = new StringBuffer();
-
-      for (var key in appendParams.keys) {
-        _writeln(buf, '--$boundary');
-        _writeln(buf, 'Content-Disposition: form-data; name="$key"');
-        _writeln(buf);
-        _writeln(buf, appendParams[key]);
-      }
-
-      _writeln(buf, '--$boundary--');
-
-      var appendRequest = new http.Request('POST', Uri.parse(UPLOAD_ENDPOINT))
-        ..headers['content-type'] = 'multipart/form-data; boundary=$boundary'
-        ..body = buf.toString();
       var appendResponse = await send(appendRequest, appendParams)
           .then(http.Response.fromStream);
 
@@ -259,5 +259,43 @@ class Twit {
     }
 
     return await awaitSuccess();
+  }
+}
+
+class _CrlfSplitter implements StreamTransformer<List<int>, Object> {
+  final List<int> buf = [];
+  int last;
+
+  @override
+  Stream<Object> bind(Stream<List<int>> stream) {
+    var ctrl = new StreamController();
+
+    stream.listen(
+        (chunk) {
+          for (var ch in chunk) {
+            if (last == $cr && ch == $lf) {
+              var str = UTF8.decode(buf..removeLast());
+
+              try {
+                if (str.isNotEmpty) ctrl.add(JSON.decode(str));
+              } catch (e, st) {
+                ctrl.addError(e, st);
+              }
+
+              buf.clear();
+              last = null;
+            } else {
+              buf.add(last = ch);
+            }
+          }
+        },
+        cancelOnError: true,
+        onError: ctrl.addError,
+        onDone: () {
+          buf.clear();
+          ctrl.close();
+        });
+
+    return ctrl.stream;
   }
 }

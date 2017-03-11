@@ -16,10 +16,14 @@ Future<TwitterCredentials> loadCredentialsFromEnvironment() async {
       .map<Map<String, String>>(psr.parse)
       .fold<Map<String, String>>({}, (out, map) => out..addAll(map));
 
-  return new TwitterCredentials(
+  var credentials = new TwitterCredentials(
     consumerKey: loaded['TWITTER_KEY'],
     consumerSecret: loaded['TWITTER_SECRET'],
     accessToken: loaded['TWITTER_ACCESS_TOKEN'],
     accessTokenSecret: loaded['TWITTER_ACCESS_TOKEN_SECRET'],
   );
+
+  print('Loaded credentials from environment: ${credentials.toJson()}');
+
+  return credentials;
 }
