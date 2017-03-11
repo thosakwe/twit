@@ -132,8 +132,8 @@ abstract class TwitBase {
         .then(_processResponse);
   }
 
-  Stream stream(String path, [Map<String, dynamic> params]) {
-    var ctrl = new StreamController();
+  Stream<Map> stream(String path, [Map<String, dynamic> params]) {
+    var ctrl = new StreamController<Map>();
     var rq = new http.Request('POST', _makeUrl(path));
 
     send(rq, params).then((rs) async {
@@ -262,13 +262,13 @@ abstract class TwitBase {
   }
 }
 
-class _CrlfSplitter implements StreamTransformer<List<int>, Object> {
+class _CrlfSplitter implements StreamTransformer<List<int>, Map> {
   final List<int> buf = [];
   int last;
 
   @override
-  Stream<Object> bind(Stream<List<int>> stream) {
-    var ctrl = new StreamController();
+  Stream<Map> bind(Stream<List<int>> stream) {
+    var ctrl = new StreamController<Map>();
 
     stream.listen(
         (chunk) {
