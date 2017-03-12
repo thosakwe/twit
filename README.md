@@ -1,5 +1,5 @@
 # twit
-[![version 0.0.2](https://img.shields.io/badge/pub-0.0.2-red.svg)](https://pub.dartlang.org/packages/twit)
+[![version 0.0.3](https://img.shields.io/badge/pub-0.0.3-red.svg)](https://pub.dartlang.org/packages/twit)
 [![build status](https://travis-ci.org/thosakwe/twit.svg?branch=master)](https://travis-ci.org/thosakwe/twit)
 
 Dart port of Tolga Tezel's Twitter client.

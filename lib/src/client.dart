@@ -25,55 +25,100 @@ final RegExp _http = new RegExp(r'^https?://');
 final RegExp _straySlashes = new RegExp(r'(^/+)|(/+$)');
 
 abstract class TwitBase {
+  final String apiRoot;
   final TwitterCredentials credentials;
+  final bool debug;
   final http.BaseClient _innerClient;
 
   TwitterAccountApi _account;
 
   TwitterAccountApi get account => _account;
 
-  TwitBase(this.credentials, this._innerClient) {
+  TwitBase(this.credentials, this._innerClient,
+      {this.apiRoot: 'https://api.twitter.com/1.1/', this.debug: false}) {
     _account = new _TwitterAccountsApiImpl(this);
   }
 
-  Uri _makeUrl(String path) {
-    if (path.startsWith(_http)) return Uri.parse(path);
-    return Uri.parse(
-        'https://api.twitter.com/1.1/' + path.replaceAll(_straySlashes, ''));
+  Uri _makeUrl(String path, [Map<String, dynamic> params]) {
+    String uri;
+
+    if (path.startsWith(_http))
+      uri = path;
+    else
+      uri = (apiRoot ?? 'https://api.twitter.com/1.1/') +
+          path.replaceAll(_straySlashes, '');
+
+    Map<String, dynamic> p = {};
+
+    if (params?.isNotEmpty == true) p.addAll(params);
+
+    try {
+      var u = Uri.parse(uri);
+      if (u.hasQuery)
+        throw new ArgumentError(
+            'Supplied URL cannot have any query parameters: $uri');
+    } catch (e) {
+      if (e is ArgumentError) rethrow;
+    }
+
+    var query = p.keys.fold<List<String>>([],
+        (out, k) => out..add('$k=' + Uri.encodeQueryComponent(p[k]))).join('&');
+
+    return Uri.parse(query.isEmpty ? uri : '$uri?$query');
   }
 
   String _createSignature(
-      String method, String uriString, Map<String, dynamic> params,
+      String method, String uriString, Map<String, String> params,
       {String tokenSecret: ""}) {
+    _printDebug('Creating signature. URI string: $uriString');
     // Not only do we need to sort the parameters, but we need to URI-encode them as well.
     var encoded = new SplayTreeMap();
+
     for (String key in params.keys) {
       encoded[Uri.encodeComponent(key)] =
           Uri.encodeComponent(params[key].toString());
     }
 
+    _printDebug('Sorted and URI-encoded parameters: $encoded');
+
     String collectedParams =
         encoded.keys.map((key) => "$key=${encoded[key]}").join("&");
 
+    _printDebug('Collected params: $collectedParams');
+
     String baseString =
-        "$method&${Uri.encodeComponent(uriString)}&${Uri.encodeComponent(
+        "${method.toUpperCase()}&${Uri.encodeComponent(uriString)}&${Uri.encodeComponent(
         collectedParams)}";
 
-    String signingKey =
-        "${Uri.encodeComponent(credentials.consumerSecret)}&$tokenSecret";
+    _printDebug('Base string: $baseString');
+
+    String signingKey = Uri.encodeComponent(credentials.consumerSecret) + '&';
+
+    if (tokenSecret?.isNotEmpty == true)
+      signingKey += Uri.encodeComponent(tokenSecret);
+
+    _printDebug('Signing key: $signingKey');
 
     // After you create a base string and signing key, we need to hash this via HMAC-SHA1
     var hmac = new Hmac(sha1, signingKey.codeUnits);
 
     // The returned signature should be the resulting hash, Base64-encoded
-    return BASE64.encode(hmac.convert(baseString.codeUnits).bytes);
+    var signature = BASE64.encode(hmac.convert(baseString.codeUnits).bytes);
+    _printDebug('Generated signature: $signature');
+    return signature;
+  }
+
+  void _printDebug(x) {
+    if (debug == true) print(x);
   }
 
   void close() => _innerClient.close();
 
   Future<StreamedResponse> send(BaseRequest request,
-      [Map<String, dynamic> params = const {}]) {
-    var headers = new Map<String, String>.from(request.headers);
+      [Map<String, String> params = const {}]) {
+    _printDebug('Sending ${request.method} ${request.url}');
+    var headers =
+        <String, String>{}; //new Map<String, String>.from(request.headers);
     headers["oauth_version"] = "1.0";
     headers["oauth_consumer_key"] = credentials.consumerKey;
 
@@ -88,19 +133,24 @@ abstract class TwitBase {
       headers["oauth_token"] = credentials.accessToken;
     }
 
-    // var request = await _client.openUrl(method, Uri.parse("$_ENDPOINT$path"));
+    Map<String, String> oauthParams =
+        ({}..addAll(headers)..addAll(params ?? {}));
+    _printDebug('OAuth params: $oauthParams');
 
     headers['oauth_signature'] = _createSignature(
         request.method,
         request.url.toString().replaceAll("?${request.url.query}", ""),
-        {}..addAll(headers)..addAll(params ?? {}),
+        oauthParams,
         tokenSecret: credentials.accessTokenSecret);
 
     var oauthString = headers.keys
-        .map((name) => '$name="${Uri.encodeComponent(headers[name])}"')
+        .map((name) =>
+            '${Uri.encodeComponent(name)}="${Uri.encodeComponent(headers[name])}"')
         .join(", ");
 
+    _printDebug('Generated OAuth String = $oauthString');
     request.headers['authorization'] = 'OAuth $oauthString';
+    _printDebug('Final headers: ${request.headers}');
 
     return _innerClient.send(request);
   }
@@ -118,25 +168,23 @@ abstract class TwitBase {
   }
 
   Future<Map<String, dynamic>> get(String path, [Map<String, String> params]) =>
-      send(new http.Request('GET', _makeUrl(path)))
+      send(new http.Request('GET', _makeUrl(path, params ?? {})))
           .then(http.Response.fromStream)
           .then(_processResponse);
 
   Future<Map<String, dynamic>> post(String path, [Map<String, String> params]) {
-    var request = new http.Request('POST', _makeUrl(path));
-
-    if (params?.isNotEmpty == true) request.bodyFields = params;
-
+    var request = new http.Request('POST', _makeUrl(path))..bodyFields = params;
     return send(request, params)
         .then(http.Response.fromStream)
         .then(_processResponse);
   }
 
-  Stream<Map> stream(String path, [Map<String, dynamic> params]) {
-    var ctrl = new StreamController<Map>();
-    var rq = new http.Request('POST', _makeUrl(path));
+  Stream<Map<String, dynamic>> stream(String path,
+      [Map<String, String> params]) {
+    var ctrl = new StreamController<Map<String, dynamic>>();
+    var request = new http.Request('POST', _makeUrl(path))..bodyFields = params;
 
-    send(rq, params).then((rs) async {
+    send(request, params).then((rs) async {
       if (rs.headers['content-type']?.contains('application/json') == true) {
         if (rs.statusCode != 200 && rs.statusCode != 201)
           throw new TwitterException.fromResponse(
