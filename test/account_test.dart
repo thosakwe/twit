@@ -16,6 +16,12 @@ main() {
     print('Credentials: $credentials');
   });
 
+  test('skip status', () async {
+    var credentials = await twit
+        .get('/account/verify_credentials.json', {'skip_status': 'true'});
+    print('Credentials: $credentials');
+  });
+
   group('settings', () {
     test('get', () async {
       var settingsMap = await twit.get('/account/settings.json');

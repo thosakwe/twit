@@ -168,12 +168,13 @@ abstract class TwitBase {
   }
 
   Future<Map<String, dynamic>> get(String path, [Map<String, String> params]) =>
-      send(new http.Request('GET', _makeUrl(path, params ?? {})))
+      send(new http.Request('GET', _makeUrl(path, params ?? {})), params)
           .then(http.Response.fromStream)
           .then(_processResponse);
 
   Future<Map<String, dynamic>> post(String path, [Map<String, String> params]) {
-    var request = new http.Request('POST', _makeUrl(path))..bodyFields = params;
+    var request = new http.Request('POST', _makeUrl(path))
+      ..bodyFields = params ?? {};
     return send(request, params)
         .then(http.Response.fromStream)
         .then(_processResponse);
@@ -182,7 +183,8 @@ abstract class TwitBase {
   Stream<Map<String, dynamic>> stream(String path,
       [Map<String, String> params]) {
     var ctrl = new StreamController<Map<String, dynamic>>();
-    var request = new http.Request('POST', _makeUrl(path))..bodyFields = params;
+    var request = new http.Request('POST', _makeUrl(path))
+      ..bodyFields = params ?? {};
 
     send(request, params).then((rs) async {
       if (rs.headers['content-type']?.contains('application/json') == true) {
